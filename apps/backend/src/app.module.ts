@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SteamModule } from './steam/steam.module';
 import { AnalysisModule } from './analysis/analysis.module';
+import { User, Game, UserGame, Analysis } from './database/entities';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { AnalysisModule } from './analysis/analysis.module';
         username: configService.get('DB_USERNAME'),
         password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_DATABASE'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        entities: [User, Game, UserGame, Analysis],
         synchronize: configService.get('NODE_ENV') === 'development',
         logging: configService.get('NODE_ENV') === 'development',
       }),
