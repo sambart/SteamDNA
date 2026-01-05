@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -13,13 +13,25 @@ export class SteamService {
   async getOwnedGames(steamId: string) {
     const url = `${this.baseUrl}/IPlayerService/GetOwnedGames/v0001/?key=${this.apiKey}&steamid=${steamId}&include_appinfo=true&include_played_free_games=true`;
     const response = await fetch(url);
-    return response.json();
+    const data = await response.json();
+
+    if (!data.response) {
+      throw new NotFoundException('Steam user not found or profile is private');
+    }
+
+    return data;
   }
 
   async getPlayerSummary(steamId: string) {
     const url = `${this.baseUrl}/ISteamUser/GetPlayerSummaries/v0002/?key=${this.apiKey}&steamids=${steamId}`;
     const response = await fetch(url);
-    return response.json();
+    const data = await response.json();
+
+    if (!data.response?.players?.length) {
+      throw new NotFoundException('Steam user not found');
+    }
+
+    return data;
   }
 
   async getRecentlyPlayedGames(steamId: string) {
@@ -32,5 +44,60 @@ export class SteamService {
     const url = `${this.baseUrl}/ISteamUserStats/GetUserStatsForGame/v0002/?appid=${appId}&key=${this.apiKey}&steamid=${steamId}`;
     const response = await fetch(url);
     return response.json();
+  }
+
+  async getCompleteUserData(steamId: string) {
+    try {
+      const [playerSummary, ownedGames, recentGames] = await Promise.all([
+        this.getPlayerSummary(steamId),
+        this.getOwnedGames(steamId),
+        this.getRecentlyPlayedGames(steamId),
+      ]);
+
+      return {
+        player: playerSummary.response.players[0],
+        games: ownedGames.response,
+        recentGames: recentGames.response,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException('Failed to fetch Steam data');
+    }
+  }
+
+  async resolveVanityUrl(vanityUrl: string): Promise<string> {
+    const url = `${this.baseUrl}/ISteamUser/ResolveVanityURL/v0001/?key=${this.apiKey}&vanityurl=${vanityUrl}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.response?.success !== 1) {
+      throw new NotFoundException('Steam user not found with this vanity URL');
+    }
+
+    return data.response.steamid;
+  }
+
+  async resolveIdentifier(identifier: string): Promise<string> {
+    // If already a Steam ID64, return it
+    if (this.validateSteamId(identifier)) {
+      return identifier;
+    }
+
+    // If it's a profile URL, extract vanity name
+    const urlMatch = identifier.match(/steamcommunity\.com\/id\/([^/]+)/);
+    if (urlMatch) {
+      return this.resolveVanityUrl(urlMatch[1]);
+    }
+
+    // Otherwise treat as vanity URL name
+    return this.resolveVanityUrl(identifier);
+  }
+
+  validateSteamId(steamId: string): boolean {
+    // Steam ID64 format validation (17 digits starting with 7656119)
+    const steamIdRegex = /^7656119\d{10}$/;
+    return steamIdRegex.test(steamId);
   }
 }

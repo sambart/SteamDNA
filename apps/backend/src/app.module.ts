@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthModule } from './auth/auth.module';
-import { UserModule } from './user/user.module';
 import { SteamModule } from './steam/steam.module';
 import { AnalysisModule } from './analysis/analysis.module';
 
@@ -27,8 +25,6 @@ import { AnalysisModule } from './analysis/analysis.module';
       }),
       inject: [ConfigService],
     }),
-    AuthModule,
-    UserModule,
     SteamModule,
     AnalysisModule,
   ],

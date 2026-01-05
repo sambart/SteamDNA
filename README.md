@@ -4,8 +4,8 @@ Discover your gaming DNA by analyzing your Steam profile. SteamDNA collects your
 
 ## Features
 
-- 🔐 **Steam OAuth Integration** - Secure authentication with your Steam account
-- 📊 **Data Collection** - Automatically collect and normalize your gaming data
+- 🔍 **Steam ID Search** - Simply enter your Steam ID to get started
+- 📊 **Data Collection** - Automatically fetch and analyze your Steam gaming data
 - 🧬 **Profile Analysis** - Analyze your gaming behavior and preferences
 - 📈 **Interactive Dashboard** - Visualize your gaming statistics with beautiful charts
 - 🎯 **Gaming Persona** - Discover your unique gaming personality type
@@ -17,7 +17,7 @@ Discover your gaming DNA by analyzing your Steam profile. SteamDNA collects your
 - **TypeORM** - ORM for TypeScript and JavaScript
 - **PostgreSQL** - Primary database
 - **Redis** - Caching and session management
-- **Passport** - Authentication middleware
+- **Steam Web API** - Direct integration for data fetching
 
 ### Frontend
 - **Next.js 14** - React framework with App Router
@@ -36,8 +36,6 @@ steam-dna/
 ├── apps/
 │   ├── backend/          # NestJS API
 │   │   ├── src/
-│   │   │   ├── auth/     # Authentication module
-│   │   │   ├── user/     # User management
 │   │   │   ├── steam/    # Steam API integration
 │   │   │   ├── analysis/ # Gaming analysis logic
 │   │   │   ├── common/   # Shared utilities
@@ -137,8 +135,6 @@ Edit `apps/backend/.env`:
 ```env
 # Steam API Configuration
 STEAM_API_KEY=your_steam_api_key_here
-STEAM_RETURN_URL=http://localhost:4000/api/auth/steam/callback
-STEAM_REALM=http://localhost:4000
 
 # Database
 DB_HOST=localhost
@@ -146,9 +142,6 @@ DB_PORT=5432
 DB_USERNAME=steamdna
 DB_PASSWORD=steamdna_password
 DB_DATABASE=steamdna
-
-# JWT Secret
-JWT_SECRET=your_secure_secret_here
 ```
 
 ### Getting a Steam API Key
@@ -164,12 +157,18 @@ Once the backend is running, visit http://localhost:4000/api/docs for interactiv
 
 ### Key Endpoints
 
-- `GET /api/auth/steam` - Initiate Steam OAuth
-- `GET /api/auth/steam/callback` - Steam OAuth callback
-- `GET /api/user/profile` - Get user profile
-- `GET /api/steam/games/:steamId` - Get owned games
-- `GET /api/analysis/summary/:userId` - Get gaming profile summary
-- `GET /api/analysis/dashboard/:userId` - Get detailed dashboard data
+All endpoints accept Steam ID64, vanity URL name, or profile URL as identifier:
+
+- `GET /api/steam/user/:identifier` - Get complete Steam user data
+- `GET /api/steam/games/:identifier` - Get owned games
+- `GET /api/steam/player/:identifier` - Get player summary
+- `GET /api/analysis/summary/:identifier` - Get gaming profile summary
+- `GET /api/analysis/dashboard/:identifier` - Get detailed dashboard data
+
+Examples:
+- `/api/steam/user/76561197960287930` (Steam ID64)
+- `/api/steam/user/gaben` (Vanity URL)
+- `/api/steam/user/steamcommunity.com/id/gaben` (Profile URL)
 
 ## Development
 
