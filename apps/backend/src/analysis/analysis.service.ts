@@ -1,51 +1,87 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { MLService } from '../ml/ml.service';
+import { GameDataService } from './services/game-data.service';
+import { UserDataService } from './services/user-data.service';
+import { StatisticsService } from './services/statistics.service';
+import { PersonaService } from './services/persona.service';
 
 @Injectable()
 export class AnalysisService {
   private readonly logger = new Logger(AnalysisService.name);
 
-  constructor(private mlService: MLService) {}
+  constructor(
+    private mlService: MLService,
+    private gameDataService: GameDataService,
+    private userDataService: UserDataService,
+    private statisticsService: StatisticsService,
+    private personaService: PersonaService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
   async generateSummary(steamData: any) {
     const { player, games, recentGames } = steamData;
     const gameList = games?.games || [];
 
-    const totalGames = gameList.length;
-    const totalPlaytime = gameList.reduce((sum, game) => sum + (game.playtime_forever || 0), 0);
-    const avgPlaytime = totalGames > 0 ? Math.round(totalPlaytime / totalGames) : 0;
+    // Check cache first
+    const cacheKey = `analysis:${player.steamid}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) {
+      this.logger.log(`Returning cached analysis for ${player.steamid}`);
+      return cached;
+    }
 
-    // Top games by playtime
-    const topGames = [...gameList]
+    // Save or update user data
+    await this.userDataService.saveUserData(player);
+
+    // Fetch and save game details (limit to top 50 games to avoid rate limiting)
+    const topGamesList = [...gameList]
       .sort((a, b) => (b.playtime_forever || 0) - (a.playtime_forever || 0))
-      .slice(0, 5)
-      .map(game => ({
-        name: game.name,
-        playtime: game.playtime_forever,
-      }));
+      .slice(0, 50);
 
-    let persona = this.calculatePersona(totalGames, totalPlaytime, avgPlaytime);
+    const gamesWithDetails = await this.gameDataService.fetchAndSaveGameDetails(topGamesList);
+
+    // Save user-game relationships (only for games that exist in DB)
+    const user = await this.userDataService.findBySteamId(player.steamid);
+    if (user) {
+      // Only get games that exist in DB (top 50)
+      const topGamesAppIds = topGamesList.map(g => g.appid);
+      const games = await this.gameDataService.findByAppIds(topGamesAppIds);
+      const gameIdMap = new Map(games.map(g => [g.appId, g.id]));
+
+      // Only save user-game relationships for top 50 games
+      const topGamesListFiltered = gameList.filter((g: any) => topGamesAppIds.includes(g.appid));
+      await this.userDataService.saveUserGames(user.id, topGamesListFiltered, gameIdMap);
+    }
+
+    // Calculate statistics
+    const stats = this.statisticsService.calculateGameStatistics(gameList);
+    const { totalGames, totalPlaytime, avgPlaytime, topGames } = stats;
+
+    // Calculate persona
+    let persona = this.personaService.calculatePersona(totalGames, totalPlaytime, avgPlaytime);
     let mlInsights = null;
 
     // Try ML-based analysis if enough games
     if (totalGames >= 5) {
       try {
-        // Prepare data for ML service
+        // Prepare data for ML service with real game details
         const userGames = gameList.map(game => ({
           appId: game.appid,
           playtimeForever: game.playtime_forever || 0,
           playtimeTwoWeeks: game.playtime_2weeks,
         }));
 
-        const gamesInfo = gameList.map(game => ({
-          appId: game.appid,
+        const gamesInfo = gamesWithDetails.map(game => ({
+          appId: game.appId,
           name: game.name,
-          genres: [], // Would need additional Steam API call to get genres
-          isFree: false,
+          genres: game.genres || [],
+          isFree: game.isFree || false,
         }));
 
         const mlResult = await this.mlService.analyzeUser(
-          0, // userId placeholder
+          user?.id || 0,
           userGames,
           gamesInfo,
         );
@@ -64,11 +100,11 @@ export class AnalysisService {
       }
     }
 
-    return {
+    const result = {
       steamId: player.steamid,
       displayName: player.personaname,
       avatar: player.avatarfull,
-      summary: this.generateTextSummary(persona, totalGames, totalPlaytime),
+      summary: this.personaService.generateTextSummary(persona, totalGames, totalPlaytime),
       gamingPersona: persona,
       totalGames,
       totalPlaytime: Math.round(totalPlaytime / 60), // Convert to hours
@@ -77,6 +113,11 @@ export class AnalysisService {
       recentActivity: recentGames?.games?.length || 0,
       mlInsights,
     };
+
+    // Cache the result for 1 hour (3600 seconds)
+    await this.cacheManager.set(cacheKey, result, 3600000);
+
+    return result;
   }
 
   async generateDashboard(steamData: any) {
@@ -84,63 +125,20 @@ export class AnalysisService {
     const gameList = games?.games || [];
 
     // Playtime distribution
-    const playtimeRanges = this.categorizeByPlaytime(gameList);
+    const playtimeRanges = this.statisticsService.categorizeByPlaytime(gameList);
 
     // Top games
-    const topGames = [...gameList]
-      .sort((a, b) => (b.playtime_forever || 0) - (a.playtime_forever || 0))
-      .slice(0, 10)
-      .map(game => ({
-        name: game.name,
-        playtime: Math.round((game.playtime_forever || 0) / 60),
-        playtimeForever: game.playtime_forever,
-      }));
+    const topGames = this.statisticsService.getTopGames(gameList, 10);
+
+    // Dashboard stats
+    const stats = this.statisticsService.calculateDashboardStats(gameList);
 
     return {
       charts: {
         playtimeDistribution: playtimeRanges,
         topGames,
       },
-      stats: {
-        totalGames: gameList.length,
-        totalPlaytime: Math.round(gameList.reduce((sum, game) => sum + (game.playtime_forever || 0), 0) / 60),
-        gamesNeverPlayed: gameList.filter(g => !g.playtime_forever || g.playtime_forever === 0).length,
-      },
+      stats,
     };
-  }
-
-  private calculatePersona(totalGames: number, totalPlaytime: number, avgPlaytime: number): string {
-    const hoursPlayed = totalPlaytime / 60;
-
-    if (hoursPlayed > 10000) return 'Hardcore Gamer';
-    if (hoursPlayed > 5000) return 'Dedicated Gamer';
-    if (hoursPlayed > 2000) return 'Enthusiast';
-    if (hoursPlayed > 500) return 'Regular Gamer';
-    return 'Casual Gamer';
-  }
-
-  private generateTextSummary(persona: string, totalGames: number, totalPlaytime: number): string {
-    const hours = Math.round(totalPlaytime / 60);
-    return `You are a ${persona} with ${totalGames} games and ${hours} hours of total playtime. Your gaming library shows a ${totalGames > 100 ? 'vast' : totalGames > 50 ? 'substantial' : 'growing'} collection.`;
-  }
-
-  private categorizeByPlaytime(games: any[]) {
-    const ranges = [
-      { name: 'Never Played', min: 0, max: 0, count: 0 },
-      { name: '< 1h', min: 1, max: 60, count: 0 },
-      { name: '1-5h', min: 61, max: 300, count: 0 },
-      { name: '5-20h', min: 301, max: 1200, count: 0 },
-      { name: '20-50h', min: 1201, max: 3000, count: 0 },
-      { name: '50-100h', min: 3001, max: 6000, count: 0 },
-      { name: '100h+', min: 6001, max: Infinity, count: 0 },
-    ];
-
-    games.forEach(game => {
-      const playtime = game.playtime_forever || 0;
-      const range = ranges.find(r => playtime >= r.min && playtime <= r.max);
-      if (range) range.count++;
-    });
-
-    return ranges.map(r => ({ name: r.name, value: r.count }));
   }
 }

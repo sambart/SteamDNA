@@ -26,6 +26,7 @@ export class UserGame {
   gameId: number;
 
   @Column()
+  @Index()
   appId: number;
 
   @Column({ type: 'int', default: 0 })

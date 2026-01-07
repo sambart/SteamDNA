@@ -87,6 +87,11 @@ services:
     build:
       context: ./apps/ml-service
       dockerfile: Dockerfile
+      cache_from:
+        - steamdna-ml-service:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: steamdna-ml-service:latest
     container_name: steamdna-ml-service
     ports:
       - '5000:5000'

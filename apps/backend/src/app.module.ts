@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SteamModule } from './steam/steam.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { MLModule } from './ml/ml.module';
+import { CacheModule } from './cache/cache.module';
 import { User, Game, UserGame, Analysis } from './database/entities';
 
 @Module({
@@ -27,6 +28,7 @@ import { User, Game, UserGame, Analysis } from './database/entities';
       }),
       inject: [ConfigService],
     }),
+    CacheModule,
     SteamModule,
     AnalysisModule,
     MLModule,

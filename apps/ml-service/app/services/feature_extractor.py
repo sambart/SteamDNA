@@ -51,24 +51,28 @@ class FeatureExtractor:
         total_playtime = df["playtimeForever"].sum()
         played_games = df[df["playtimeForever"] > 0]
 
+        playtime_std = df["playtimeForever"].std() / 60.0
+        playtime_std = 0.0 if pd.isna(playtime_std) else playtime_std
+
+        avg_playtime = played_games["playtimeForever"].mean() / 60.0 if len(played_games) > 0 else 0
+        avg_playtime = 0.0 if pd.isna(avg_playtime) else avg_playtime
+
+        median_playtime = played_games["playtimeForever"].median() / 60.0 if len(played_games) > 0 else 0
+        median_playtime = 0.0 if pd.isna(median_playtime) else median_playtime
+
+        max_playtime = df["playtimeForever"].max() / 60.0
+        max_playtime = 0.0 if pd.isna(max_playtime) else max_playtime
+
         return {
-            "total_playtime_hours": total_playtime / 60.0,
-            "avg_playtime_hours": (
-                played_games["playtimeForever"].mean() / 60.0
-                if len(played_games) > 0
-                else 0
-            ),
-            "median_playtime_hours": (
-                played_games["playtimeForever"].median() / 60.0
-                if len(played_games) > 0
-                else 0
-            ),
-            "max_playtime_hours": df["playtimeForever"].max() / 60.0,
-            "playtime_std": df["playtimeForever"].std() / 60.0,
-            "games_never_played_ratio": (
+            "total_playtime_hours": float(total_playtime / 60.0),
+            "avg_playtime_hours": float(avg_playtime),
+            "median_playtime_hours": float(median_playtime),
+            "max_playtime_hours": float(max_playtime),
+            "playtime_std": float(playtime_std),
+            "games_never_played_ratio": float(
                 len(df[df["playtimeForever"] == 0]) / len(df) if len(df) > 0 else 0
             ),
-            "heavily_played_ratio": (
+            "heavily_played_ratio": float(
                 len(df[df["playtimeForever"] > 3000]) / len(df) if len(df) > 0 else 0
             ),  # > 50 hours
         }
@@ -80,13 +84,17 @@ class FeatureExtractor:
         genre_playtime = {}
 
         for _, row in df.iterrows():
-            if pd.notna(row.get("genres")) and row["genres"]:
-                genres = row["genres"] if isinstance(row["genres"], list) else []
-                playtime = row["playtimeForever"]
+            genres_value = row.get("genres")
+            # Check if genres exists and is not empty (handle both list and numpy array)
+            if genres_value is not None and not (isinstance(genres_value, float) and pd.isna(genres_value)):
+                genres = genres_value if isinstance(genres_value, list) else []
+                # Additional check for non-empty list
+                if len(genres) > 0:
+                    playtime = row["playtimeForever"]
 
-                for genre in genres:
-                    all_genres.append(genre)
-                    genre_playtime[genre] = genre_playtime.get(genre, 0) + playtime
+                    for genre in genres:
+                        all_genres.append(genre)
+                        genre_playtime[genre] = genre_playtime.get(genre, 0) + playtime
 
         genre_counts = Counter(all_genres)
         top_genres = genre_counts.most_common(10)
@@ -104,14 +112,15 @@ class FeatureExtractor:
 
     def _extract_diversity_features(self, df: pd.DataFrame) -> Dict[str, float]:
         """Extract game diversity features"""
+        avg_metacritic = df["metacriticScore"].mean() if "metacriticScore" in df.columns else 0
+        avg_metacritic = 0.0 if pd.isna(avg_metacritic) else float(avg_metacritic)
+
         return {
-            "unique_games": len(df),
-            "free_games_ratio": (
+            "unique_games": float(len(df)),
+            "free_games_ratio": float(
                 len(df[df["isFree"] == True]) / len(df) if len(df) > 0 else 0
             ),
-            "avg_metacritic_score": df["metacriticScore"].mean()
-            if "metacriticScore" in df.columns
-            else 0,
+            "avg_metacritic_score": avg_metacritic,
         }
 
     def _extract_achievement_features(self, df: pd.DataFrame) -> Dict[str, float]:
@@ -120,9 +129,9 @@ class FeatureExtractor:
 
         if len(achievements_data) == 0:
             return {
-                "avg_achievement_rate": 0,
-                "total_achievements_unlocked": 0,
-                "achievement_hunter_score": 0,
+                "avg_achievement_rate": 0.0,
+                "total_achievements_unlocked": 0.0,
+                "achievement_hunter_score": 0.0,
             }
 
         total_unlocked = 0
@@ -134,34 +143,38 @@ class FeatureExtractor:
                 total_possible += achievement_json.get("totalAchievements", 0)
 
         avg_achievement_rate = (
-            (total_unlocked / total_possible * 100) if total_possible > 0 else 0
+            (total_unlocked / total_possible * 100) if total_possible > 0 else 0.0
         )
 
         return {
-            "avg_achievement_rate": avg_achievement_rate,
-            "total_achievements_unlocked": total_unlocked,
-            "achievement_hunter_score": avg_achievement_rate
-            * len(achievements_data),  # Composite score
+            "avg_achievement_rate": float(avg_achievement_rate),
+            "total_achievements_unlocked": float(total_unlocked),
+            "achievement_hunter_score": float(avg_achievement_rate * len(achievements_data)),  # Composite score
         }
 
     def _extract_temporal_features(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Extract time-based features"""
         recent_playtime = df["playtimeTwoWeeks"].sum() if "playtimeTwoWeeks" in df.columns else 0
+        recent_playtime = 0 if pd.isna(recent_playtime) else recent_playtime
 
         return {
-            "recent_playtime_hours": recent_playtime / 60.0 if recent_playtime else 0,
-            "active_recently": recent_playtime > 0,
+            "recent_playtime_hours": float(recent_playtime / 60.0 if recent_playtime else 0),
+            "active_recently": bool(recent_playtime > 0),
         }
 
     def _calculate_entropy(self, counts: List[int]) -> float:
         """Calculate Shannon entropy for diversity measurement"""
         if not counts:
-            return 0
+            return 0.0
 
         total = sum(counts)
+        if total == 0:
+            return 0.0
+
         probabilities = [count / total for count in counts if count > 0]
 
         entropy = -sum(p * np.log2(p) for p in probabilities if p > 0)
+        entropy = 0.0 if np.isnan(entropy) or np.isinf(entropy) else float(entropy)
         return entropy
 
     def _combine_features(self, features: Dict[str, Any]) -> np.ndarray:
@@ -210,10 +223,15 @@ class FeatureExtractor:
         temporal = features["temporal_features"]
         vector.extend([temporal["recent_playtime_hours"]])
 
-        # Replace NaN with 0
-        vector = [0 if np.isnan(x) or x is None else x for x in vector]
+        # Replace NaN and Inf with 0
+        cleaned_vector = []
+        for x in vector:
+            if x is None or (isinstance(x, (int, float)) and (np.isnan(x) or np.isinf(x))):
+                cleaned_vector.append(0.0)
+            else:
+                cleaned_vector.append(float(x))
 
-        return np.array(vector, dtype=float)
+        return np.array(cleaned_vector, dtype=float)
 
     def _empty_features(self) -> Dict[str, Any]:
         """Return empty feature set for users with no games"""

@@ -68,7 +68,9 @@ export class MLService {
       });
 
       if (!response.ok) {
-        throw new Error(`ML Service returned ${response.status}`);
+        const errorText = await response.text();
+        this.logger.error(`ML Service returned ${response.status}: ${errorText}`);
+        throw new Error(`ML Service returned ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
