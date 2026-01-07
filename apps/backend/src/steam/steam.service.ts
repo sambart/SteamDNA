@@ -1,15 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import { HttpService, HttpError } from '../common/http';
 
 @Injectable()
 export class SteamService {
+  private readonly logger = new Logger(SteamService.name);
   private readonly apiKey: string;
   private readonly baseUrl = 'https://api.steampowered.com';
 
   constructor(
     private configService: ConfigService,
+    private httpService: HttpService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {
     this.apiKey = this.configService.get('STEAM_API_KEY');
@@ -17,38 +20,50 @@ export class SteamService {
 
   async getOwnedGames(steamId: string) {
     const url = `${this.baseUrl}/IPlayerService/GetOwnedGames/v0001/?key=${this.apiKey}&steamid=${steamId}&include_appinfo=true&include_played_free_games=true`;
-    const response = await fetch(url);
-    const data = await response.json();
 
-    if (!data.response) {
-      throw new NotFoundException('Steam user not found or profile is private');
+    try {
+      const data = await this.httpService.get<any>(url, { timeout: 10000 });
+
+      if (!data.response) {
+        throw new NotFoundException('Steam user not found or profile is private');
+      }
+
+      return data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new BadRequestException(`Failed to fetch owned games: ${error.message}`);
+      }
+      throw error;
     }
-
-    return data;
   }
 
   async getPlayerSummary(steamId: string) {
     const url = `${this.baseUrl}/ISteamUser/GetPlayerSummaries/v0002/?key=${this.apiKey}&steamids=${steamId}`;
-    const response = await fetch(url);
-    const data = await response.json();
 
-    if (!data.response?.players?.length) {
-      throw new NotFoundException('Steam user not found');
+    try {
+      const data = await this.httpService.get<any>(url, { timeout: 10000 });
+
+      if (!data.response?.players?.length) {
+        throw new NotFoundException('Steam user not found');
+      }
+
+      return data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new BadRequestException(`Failed to fetch player summary: ${error.message}`);
+      }
+      throw error;
     }
-
-    return data;
   }
 
   async getRecentlyPlayedGames(steamId: string) {
     const url = `${this.baseUrl}/IPlayerService/GetRecentlyPlayedGames/v0001/?key=${this.apiKey}&steamid=${steamId}`;
-    const response = await fetch(url);
-    return response.json();
+    return this.httpService.get<any>(url, { timeout: 10000 });
   }
 
   async getUserStatsForGame(steamId: string, appId: number) {
     const url = `${this.baseUrl}/ISteamUserStats/GetUserStatsForGame/v0002/?appid=${appId}&key=${this.apiKey}&steamid=${steamId}`;
-    const response = await fetch(url);
-    return response.json();
+    return this.httpService.get<any>(url, { timeout: 10000 });
   }
 
   async getGameDetails(appId: number) {
@@ -63,18 +78,14 @@ export class SteamService {
 
       // Steam Store API
       const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&l=english`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        console.error(`Steam API HTTP error for appId ${appId}: ${response.status} ${response.statusText}`);
-        return null;
-      }
-
-      const data = await response.json();
+      const data = await this.httpService.get<any>(url, {
+        timeout: 15000,
+        retries: 2,
+      });
 
       // Steam API returned success: false (game not found or removed)
       if (!data[appId]?.success) {
-        console.warn(`Steam API returned success=false for appId ${appId} (game may not exist or be removed)`);
+        this.logger.warn(`Steam API returned success=false for appId ${appId} (game may not exist or be removed)`);
         return null;
       }
 
@@ -82,7 +93,7 @@ export class SteamService {
 
       // Validate required fields
       if (!gameData?.name) {
-        console.error(`Steam API returned invalid data for appId ${appId}: missing required fields`);
+        this.logger.error(`Steam API returned invalid data for appId ${appId}: missing required fields`);
         return null;
       }
 
@@ -110,11 +121,15 @@ export class SteamService {
 
       // Only cache successful responses with valid data
       await this.cacheManager.set(cacheKey, gameDetails, 604800000);
-      console.log(`Successfully cached game details for appId ${appId}: ${gameData.name}`);
+      this.logger.log(`Successfully cached game details for appId ${appId}: ${gameData.name}`);
 
       return gameDetails;
     } catch (error) {
-      console.error(`Exception while fetching game details for appId ${appId}:`, error.message);
+      if (error instanceof HttpError) {
+        this.logger.error(`HTTP error fetching game details for appId ${appId}: ${error.statusCode} ${error.message}`);
+      } else {
+        this.logger.error(`Exception while fetching game details for appId ${appId}:`, error.message);
+      }
       // Do NOT cache failures - return null without caching
       return null;
     }
@@ -123,8 +138,7 @@ export class SteamService {
   async getPlayerAchievements(steamId: string, appId: number) {
     try {
       const url = `${this.baseUrl}/ISteamUserStats/GetPlayerAchievements/v0001/?appid=${appId}&key=${this.apiKey}&steamid=${steamId}`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const data = await this.httpService.get<any>(url, { timeout: 10000, retries: 2 });
 
       if (!data.playerstats?.success) {
         return null;
@@ -147,7 +161,7 @@ export class SteamService {
         })),
       };
     } catch (error) {
-      console.error(`Failed to fetch achievements for appId ${appId}:`, error.message);
+      this.logger.error(`Failed to fetch achievements for appId ${appId}:`, error.message);
       return null;
     }
   }

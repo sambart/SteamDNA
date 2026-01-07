@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { HttpService } from '../common/http';
 
 interface UserGameData {
   appId: number;
@@ -44,7 +45,10 @@ export class MLService {
   private readonly logger = new Logger(MLService.name);
   private readonly mlServiceUrl: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private httpService: HttpService,
+  ) {
     this.mlServiceUrl =
       this.configService.get('ML_SERVICE_URL') || 'http://ml-service:5000';
   }
@@ -55,25 +59,12 @@ export class MLService {
     gamesInfo: GameInfo[],
   ): Promise<MLAnalysisResponse> {
     try {
-      const response = await fetch(`${this.mlServiceUrl}/api/ml/analysis/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          userGames,
-          gamesInfo,
-        }),
-      });
+      const data = await this.httpService.post<MLAnalysisResponse>(
+        `${this.mlServiceUrl}/api/ml/analysis/analyze`,
+        { userId, userGames, gamesInfo },
+        { timeout: 30000, retries: 2 },
+      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`ML Service returned ${response.status}: ${errorText}`);
-        throw new Error(`ML Service returned ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
       this.logger.log(`ML analysis completed for user ${userId}`);
       return data;
     } catch (error) {
@@ -87,22 +78,11 @@ export class MLService {
     gamesInfo: GameInfo[],
   ): Promise<{ featureVector: number[]; featureDetails: any; metadata: any }> {
     try {
-      const response = await fetch(`${this.mlServiceUrl}/api/ml/features/extract`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userGames,
-          gamesInfo,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`ML Service returned ${response.status}`);
-      }
-
-      return response.json();
+      return await this.httpService.post(
+        `${this.mlServiceUrl}/api/ml/features/extract`,
+        { userGames, gamesInfo },
+        { timeout: 15000 },
+      );
     } catch (error) {
       this.logger.error('Feature extraction failed:', error.message);
       throw error;
@@ -111,13 +91,10 @@ export class MLService {
 
   async getPersonas(): Promise<any[]> {
     try {
-      const response = await fetch(`${this.mlServiceUrl}/api/ml/analysis/personas`);
-
-      if (!response.ok) {
-        throw new Error(`ML Service returned ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await this.httpService.get<{ personas: any[] }>(
+        `${this.mlServiceUrl}/api/ml/analysis/personas`,
+        { timeout: 5000 },
+      );
       return data.personas;
     } catch (error) {
       this.logger.error('Failed to fetch personas:', error.message);
@@ -127,8 +104,11 @@ export class MLService {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.mlServiceUrl}/health`);
-      return response.ok;
+      await this.httpService.get(`${this.mlServiceUrl}/health`, {
+        timeout: 5000,
+        retries: 1,
+      });
+      return true;
     } catch (error) {
       this.logger.warn('ML Service health check failed:', error.message);
       return false;

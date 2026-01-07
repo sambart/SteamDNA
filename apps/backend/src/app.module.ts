@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from './common/http';
 import { SteamModule } from './steam/steam.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { MLModule } from './ml/ml.module';
@@ -20,7 +21,7 @@ import { User, Game, UserGame, Analysis } from './database/entities';
         host: configService.get('DB_HOST'),
         port: configService.get('DB_PORT'),
         username: configService.get('DB_USERNAME'),
-        password: configService.get('DB_PASSWORD'),
+        password: configService.get('DB_Password'),
         database: configService.get('DB_DATABASE'),
         entities: [User, Game, UserGame, Analysis],
         synchronize: configService.get('NODE_ENV') === 'development',
@@ -28,6 +29,7 @@ import { User, Game, UserGame, Analysis } from './database/entities';
       }),
       inject: [ConfigService],
     }),
+    HttpModule,
     CacheModule,
     SteamModule,
     AnalysisModule,
