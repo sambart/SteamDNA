@@ -97,7 +97,7 @@ services:
       DB_USERNAME: steamdna
       DB_PASSWORD: steamdna_password
       DB_DATABASE: steamdna
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:4000
+      ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:4000"]'
     depends_on:
       postgres:
         condition: service_healthy

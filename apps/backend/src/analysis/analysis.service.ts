@@ -1,7 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { MLService } from '../ml/ml.service';
 
 @Injectable()
 export class AnalysisService {
+  private readonly logger = new Logger(AnalysisService.name);
+
+  constructor(private mlService: MLService) {}
+
   async generateSummary(steamData: any) {
     const { player, games, recentGames } = steamData;
     const gameList = games?.games || [];
@@ -19,8 +24,45 @@ export class AnalysisService {
         playtime: game.playtime_forever,
       }));
 
-    // Simple persona calculation
-    const persona = this.calculatePersona(totalGames, totalPlaytime, avgPlaytime);
+    let persona = this.calculatePersona(totalGames, totalPlaytime, avgPlaytime);
+    let mlInsights = null;
+
+    // Try ML-based analysis if enough games
+    if (totalGames >= 5) {
+      try {
+        // Prepare data for ML service
+        const userGames = gameList.map(game => ({
+          appId: game.appid,
+          playtimeForever: game.playtime_forever || 0,
+          playtimeTwoWeeks: game.playtime_2weeks,
+        }));
+
+        const gamesInfo = gameList.map(game => ({
+          appId: game.appid,
+          name: game.name,
+          genres: [], // Would need additional Steam API call to get genres
+          isFree: false,
+        }));
+
+        const mlResult = await this.mlService.analyzeUser(
+          0, // userId placeholder
+          userGames,
+          gamesInfo,
+        );
+
+        persona = mlResult.persona.personaName;
+        mlInsights = {
+          confidence: mlResult.persona.confidence,
+          traits: mlResult.persona.traits,
+          insights: mlResult.persona.insights,
+          topGenres: mlResult.topGenres,
+        };
+
+        this.logger.log(`ML analysis successful: ${persona}`);
+      } catch (error) {
+        this.logger.warn('ML analysis failed, falling back to basic analysis', error.message);
+      }
+    }
 
     return {
       steamId: player.steamid,
@@ -33,6 +75,7 @@ export class AnalysisService {
       avgPlaytimePerGame: Math.round(avgPlaytime / 60),
       topGames,
       recentActivity: recentGames?.games?.length || 0,
+      mlInsights,
     };
   }
 

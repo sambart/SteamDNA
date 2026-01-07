@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SteamModule } from './steam/steam.module';
 import { AnalysisModule } from './analysis/analysis.module';
+import { MLModule } from './ml/ml.module';
 import { User, Game, UserGame, Analysis } from './database/entities';
 
 @Module({
@@ -28,6 +29,7 @@ import { User, Game, UserGame, Analysis } from './database/entities';
     }),
     SteamModule,
     AnalysisModule,
+    MLModule,
   ],
 })
 export class AppModule {}
