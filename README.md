@@ -6,9 +6,10 @@ Discover your gaming DNA by analyzing your Steam profile. SteamDNA collects your
 
 - 🔍 **Steam ID Search** - Simply enter your Steam ID to get started
 - 📊 **Data Collection** - Automatically fetch and analyze your Steam gaming data
-- 🧬 **Profile Analysis** - Analyze your gaming behavior and preferences
+- 🧬 **ML-Powered Analysis** - Machine learning-based gaming behavior analysis
 - 📈 **Interactive Dashboard** - Visualize your gaming statistics with beautiful charts
-- 🎯 **Gaming Persona** - Discover your unique gaming personality type
+- 🎯 **Gaming Persona** - AI-classified gaming personality (5 personas)
+- 🤖 **Feature Extraction** - 16-dimensional feature vectors for deep insights
 
 ## Tech Stack
 
@@ -18,6 +19,12 @@ Discover your gaming DNA by analyzing your Steam profile. SteamDNA collects your
 - **PostgreSQL** - Primary database
 - **Redis** - Caching and session management
 - **Steam Web API** - Direct integration for data fetching
+
+### ML Service
+- **FastAPI** - High-performance Python API framework
+- **scikit-learn** - Machine learning algorithms (K-means clustering)
+- **pandas/numpy** - Data processing and feature engineering
+- **SQLAlchemy** - Database ORM for Python
 
 ### Frontend
 - **Next.js 14** - React framework with App Router
@@ -37,11 +44,19 @@ steam-dna/
 │   ├── backend/          # NestJS API
 │   │   ├── src/
 │   │   │   ├── steam/    # Steam API integration
-│   │   │   ├── analysis/ # Gaming analysis logic
-│   │   │   ├── common/   # Shared utilities
-│   │   │   └── database/ # Database entities
+│   │   │   ├── analysis/ # Basic analysis logic
+│   │   │   ├── database/ # TypeORM entities
+│   │   │   └── common/   # Shared utilities
 │   │   ├── Dockerfile
 │   │   └── package.json
+│   ├── ml-service/       # FastAPI ML Service
+│   │   ├── app/
+│   │   │   ├── models/   # SQLAlchemy models
+│   │   │   ├── services/ # ML algorithms
+│   │   │   ├── routers/  # API endpoints
+│   │   │   └── schemas/  # Pydantic models
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
 │   └── frontend/         # Next.js app
 │       ├── src/
 │       │   ├── app/      # Next.js pages
@@ -75,10 +90,13 @@ steam-dna/
    ```bash
    # Backend
    cp apps/backend/.env.example apps/backend/.env
-   # Edit apps/backend/.env and add your Steam API key and other credentials
+   # Edit apps/backend/.env and add your Steam API key
 
    # Frontend
    cp apps/frontend/.env.example apps/frontend/.env
+
+   # ML Service
+   cp apps/ml-service/.env.example apps/ml-service/.env
    ```
 
 3. **Install dependencies**
@@ -89,7 +107,7 @@ steam-dna/
 ### Running with Docker (Recommended)
 
 ```bash
-# Start all services (PostgreSQL, Redis, Backend, Frontend)
+# Start all services (PostgreSQL, Redis, Backend, ML Service, Frontend)
 npm run docker:up
 
 # View logs
@@ -102,7 +120,9 @@ npm run docker:down
 Access the application:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:4000/api
-- API Documentation: http://localhost:4000/api/docs
+- Backend API Docs: http://localhost:4000/api/docs
+- ML Service API: http://localhost:5000
+- ML Service Docs: http://localhost:5000/docs
 
 ### Running Locally
 

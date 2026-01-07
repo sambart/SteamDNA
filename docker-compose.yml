@@ -83,6 +83,30 @@ services:
       - steamdna-network
     command: npm run dev
 
+  ml-service:
+    build:
+      context: ./apps/ml-service
+      dockerfile: Dockerfile
+    container_name: steamdna-ml-service
+    ports:
+      - '5000:5000'
+    environment:
+      DEBUG: 'true'
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: steamdna
+      DB_PASSWORD: steamdna_password
+      DB_DATABASE: steamdna
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/ml-service:/app
+    networks:
+      - steamdna-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+
 volumes:
   postgres_data:
   redis_data:
