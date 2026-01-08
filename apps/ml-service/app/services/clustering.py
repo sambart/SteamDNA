@@ -44,7 +44,7 @@ class GamingPersonaClusterer:
         # Extract playtime characteristics
         deep_dive_count = playtime_features.get("deep_dive_game_count", 0)
         avg_session = playtime_features.get("avg_session_length", 0)
-        top_game_concentt = playtime_features.get("top_game_concentration", 0)
+        top_game_concentration = playtime_features.get("top_game_concentration", 0)
         genre_diversity = genre_features.get("genre_diversity", 0)
 
         # Score each persona (0-5: 몰입형/사색형, 1: 분석형/계획형, 2: 자유형/탐색형, 3: 성취지향/경쟁형, 4: 소셜형/협동형)

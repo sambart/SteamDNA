@@ -84,6 +84,7 @@ export class AnalysisService {
           traits: mlResult.persona.traits,
           insights: mlResult.persona.insights,
           topGenres: mlResult.topGenres,
+          featureDetails: mlResult.featureDetails, // Include detailed feature analysis
         };
 
         this.logger.log(`ML analysis successful: ${persona}`);
