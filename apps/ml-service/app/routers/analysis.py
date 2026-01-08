@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, PersonaResult
 from app.services.feature_extractor import FeatureExtractor
 from app.services.clustering import GamingPersonaClusterer
+from app.services.cluster_monitor import cluster_monitor
 import numpy as np
 
 router = APIRouter()
@@ -56,14 +57,14 @@ async def analyze_user(request: AnalysisRequest):
             # Return default response for users with no games
             return AnalysisResponse(
                 userId=int(request.userId),
-                featureVector=[0.0] * 16,
+                featureVector=[0.0] * 27,
                 persona=PersonaResult(
                     clusterId=0,
-                    personaName="New Gamer",
+                    personaName="신규 게이머",
                     confidence=1.0,
-                    description="Just starting your gaming journey",
-                    traits=["Beginner"],
-                    insights=["Start exploring different game genres to discover your preferences"],
+                    description="게임 여정을 막 시작한 단계",
+                    traits=["초보자"],
+                    insights=["다양한 장르를 경험하며 자신의 취향을 찾아보세요"],
                 ),
                 topGenres=[],
                 totalGames=0,
@@ -83,6 +84,13 @@ async def analyze_user(request: AnalysisRequest):
         # Predict persona
         cluster_id, persona_name, confidence = clusterer.predict_persona(
             features["feature_vector"]
+        )
+
+        # Record prediction for monitoring
+        cluster_monitor.record_prediction(
+            cluster_id=cluster_id,
+            confidence=confidence,
+            feature_vector=features["feature_vector"]
         )
 
         # Get persona characteristics
@@ -129,14 +137,14 @@ async def analyze_user(request: AnalysisRequest):
         # Return a fallback response instead of raising 500
         return AnalysisResponse(
             userId=int(request.userId),
-            featureVector=[0.0] * 16,
+            featureVector=[0.0] * 27,
             persona=PersonaResult(
                 clusterId=0,
-                personaName="Casual Gamer",
+                personaName="캐주얼 게이머",
                 confidence=0.5,
-                description="Unable to perform detailed analysis",
-                traits=["Casual"],
-                insights=["Analysis could not be completed with available data"],
+                description="상세 분석을 수행할 수 없습니다",
+                traits=["캐주얼"],
+                insights=["사용 가능한 데이터로 분석을 완료할 수 없습니다"],
             ),
             topGenres=[],
             totalGames=len(request.userGames) if request.userGames else 0,
@@ -153,14 +161,14 @@ async def analyze_user(request: AnalysisRequest):
         # Return a fallback response instead of raising 500
         return AnalysisResponse(
             userId=int(request.userId),
-            featureVector=[0.0] * 16,
+            featureVector=[0.0] * 27,
             persona=PersonaResult(
                 clusterId=0,
-                personaName="Casual Gamer",
+                personaName="캐주얼 게이머",
                 confidence=0.5,
-                description="Analysis temporarily unavailable",
-                traits=["Casual"],
-                insights=["Please try again later"],
+                description="분석을 일시적으로 사용할 수 없습니다",
+                traits=["캐주얼"],
+                insights=["나중에 다시 시도해주세요"],
             ),
             topGenres=[],
             totalGames=len(request.userGames) if request.userGames else 0,
@@ -180,7 +188,71 @@ async def get_personas():
                 "description": clusterer.get_persona_characteristics(cluster_id, {})[
                     "description"
                 ],
+                "traits": clusterer.get_persona_characteristics(cluster_id, {})["traits"],
+                "gaming_style": clusterer.get_persona_characteristics(cluster_id, {}).get("gaming_style", ""),
             }
             for cluster_id, name in clusterer.PERSONA_NAMES.items()
         ]
+    }
+
+
+@router.get("/monitoring/distribution")
+async def get_cluster_distribution():
+    """
+    Get current cluster distribution statistics
+
+    Returns information about how users are distributed across personas
+    """
+    return cluster_monitor.get_distribution()
+
+
+@router.get("/monitoring/quality")
+async def get_clustering_quality():
+    """
+    Get clustering quality metrics
+
+    Returns metrics like average confidence, balance score, etc.
+    """
+    return cluster_monitor.get_persona_quality_metrics()
+
+
+@router.get("/monitoring/features")
+async def get_feature_statistics():
+    """
+    Get feature value statistics
+
+    Returns min/max/avg for all 27 features
+    """
+    return cluster_monitor.get_feature_statistics()
+
+
+@router.get("/monitoring/summary")
+async def get_monitoring_summary():
+    """
+    Get comprehensive monitoring summary
+
+    Returns distribution, quality metrics, and key feature stats
+    """
+    distribution = cluster_monitor.get_distribution()
+    quality = cluster_monitor.get_persona_quality_metrics()
+
+    return {
+        "distribution": distribution,
+        "quality_metrics": quality,
+        "persona_names": clusterer.PERSONA_NAMES,
+        "total_features": 27,
+    }
+
+
+@router.post("/monitoring/reset")
+async def reset_monitoring():
+    """
+    Reset monitoring statistics
+
+    Clears all accumulated monitoring data
+    """
+    cluster_monitor.reset()
+    return {
+        "status": "success",
+        "message": "Monitoring statistics have been reset"
     }
