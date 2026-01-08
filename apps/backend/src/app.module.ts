@@ -21,7 +21,7 @@ import { User, Game, UserGame, Analysis } from './database/entities';
         host: configService.get('DB_HOST'),
         port: configService.get('DB_PORT'),
         username: configService.get('DB_USERNAME'),
-        password: configService.get('DB_Password'),
+        password: configService.get('DB_PASSWORD'),
         database: configService.get('DB_DATABASE'),
         entities: [User, Game, UserGame, Analysis],
         synchronize: configService.get('NODE_ENV') === 'development',

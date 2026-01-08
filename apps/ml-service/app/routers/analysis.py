@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, PersonaResult
 from app.services.feature_extractor import FeatureExtractor
 from app.services.clustering import GamingPersonaClusterer
@@ -13,44 +13,15 @@ from app.api.dependencies import (
 from app.core.logging_config import get_logger
 from app.core.exceptions import InsufficientDataError, FeatureExtractionError
 from app.config import Settings
-import numpy as np
+from app.utils.type_conversion import convert_numpy_types
 
 router = APIRouter()
 logger = get_logger()
 
 
-def convert_numpy_types(obj):
-    """Recursively convert numpy types to native Python types and handle NaN/Inf"""
-    if isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        value = float(obj)
-        # Handle NaN and Infinity
-        if np.isnan(value):
-            return 0.0
-        elif np.isinf(value):
-            return 0.0
-        return value
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
-    elif isinstance(obj, dict):
-        return {key: convert_numpy_types(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_numpy_types(item) for item in obj]
-    elif isinstance(obj, (float, int)) and not isinstance(obj, bool):
-        # Handle regular Python float/int that might be NaN or Inf
-        if isinstance(obj, float):
-            if np.isnan(obj) or np.isinf(obj):
-                return 0.0
-        return obj
-    return obj
-
-
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_user(
-    request: AnalysisRequest,
+    request_body: AnalysisRequest,
     feature_extractor: FeatureExtractor = Depends(get_feature_extractor),
     clusterer: GamingPersonaClusterer = Depends(get_clusterer),
     monitor: ClusterMonitor = Depends(get_cluster_monitor),
@@ -67,18 +38,18 @@ async def analyze_user(
     logger.info(
         "Analysis request received",
         extra={
-            "user_id": request.userId,
-            "game_count": len(request.userGames) if request.userGames else 0
+            "user_id": request_body.userId,
+            "game_count": len(request_body.userGames) if request_body.userGames else 0
         }
     )
 
     try:
         # Validate input data
-        if not request.userGames or len(request.userGames) == 0:
-            logger.info("No games provided", extra={"user_id": request.userId})
+        if not request_body.userGames or len(request_body.userGames) == 0:
+            logger.info("No games provided", extra={"user_id": request_body.userId})
             # Return default response for users with no games
             return AnalysisResponse(
-                userId=int(request.userId),
+                userId=int(request_body.userId),
                 featureVector=[0.0] * settings.FEATURE_VECTOR_SIZE,
                 persona=PersonaResult(
                     clusterId=0,
@@ -95,20 +66,20 @@ async def analyze_user(
             )
 
         # Check minimum games requirement
-        if len(request.userGames) < settings.MIN_GAMES_FOR_ANALYSIS:
+        if len(request_body.userGames) < settings.MIN_GAMES_FOR_ANALYSIS:
             logger.warning(
                 "Insufficient games for analysis",
                 extra={
-                    "user_id": request.userId,
-                    "game_count": len(request.userGames),
+                    "user_id": request_body.userId,
+                    "game_count": len(request_body.userGames),
                     "min_required": settings.MIN_GAMES_FOR_ANALYSIS
                 }
             )
             raise InsufficientDataError(min_games=settings.MIN_GAMES_FOR_ANALYSIS)
 
         # Convert Pydantic models to dictionaries
-        user_games_data = [game.model_dump() for game in request.userGames]
-        games_info_data = [game.model_dump() for game in request.gamesInfo]
+        user_games_data = [game.model_dump() for game in request_body.userGames]
+        games_info_data = [game.model_dump() for game in request_body.gamesInfo]
 
         # Extract features
         features = feature_extractor.extract_user_features(
@@ -130,7 +101,7 @@ async def analyze_user(
         logger.info(
             "Analysis completed successfully",
             extra={
-                "user_id": request.userId,
+                "user_id": request_body.userId,
                 "cluster_id": cluster_id,
                 "confidence": confidence,
                 "persona_name": persona_name
@@ -162,7 +133,7 @@ async def analyze_user(
         cleaned_top_genres = convert_numpy_types(top_genres)
 
         return AnalysisResponse(
-            userId=int(request.userId),
+            userId=int(request_body.userId),
             featureVector=cleaned_feature_vector,
             persona=persona_result,
             topGenres=cleaned_top_genres,
@@ -174,14 +145,14 @@ async def analyze_user(
     except InsufficientDataError as e:
         logger.warning(
             "Insufficient data for analysis",
-            extra={"user_id": request.userId, "error": str(e)}
+            extra={"user_id": request_body.userId, "error": str(e)}
         )
         raise HTTPException(status_code=400, detail=str(e))
 
     except FeatureExtractionError as e:
         logger.error(
             "Feature extraction failed",
-            extra={"user_id": request.userId, "error": str(e)},
+            extra={"user_id": request_body.userId, "error": str(e)},
             exc_info=True
         )
         raise HTTPException(
@@ -192,7 +163,7 @@ async def analyze_user(
     except ValueError as e:
         logger.warning(
             "Data validation error",
-            extra={"user_id": request.userId, "error": str(e)},
+            extra={"user_id": request_body.userId, "error": str(e)},
             exc_info=True
         )
         raise HTTPException(
@@ -203,7 +174,7 @@ async def analyze_user(
     except Exception as e:
         logger.error(
             "Unexpected error during analysis",
-            extra={"user_id": request.userId, "error": str(e)},
+            extra={"user_id": request_body.userId, "error": str(e)},
             exc_info=True
         )
         raise HTTPException(
@@ -216,20 +187,20 @@ async def analyze_user(
 async def get_personas(clusterer: GamingPersonaClusterer = Depends(get_clusterer)):
     """Get list of available gaming personas"""
     logger.info("Fetching available personas")
-    return {
-        "personas": [
-            {
-                "id": cluster_id,
-                "name": name,
-                "description": clusterer.get_persona_characteristics(cluster_id, {})[
-                    "description"
-                ],
-                "traits": clusterer.get_persona_characteristics(cluster_id, {})["traits"],
-                "gaming_style": clusterer.get_persona_characteristics(cluster_id, {}).get("gaming_style", ""),
-            }
-            for cluster_id, name in clusterer.PERSONA_NAMES.items()
-        ]
-    }
+
+    personas = []
+    for cluster_id, name in clusterer.PERSONA_NAMES.items():
+        # Call get_persona_characteristics once per persona
+        characteristics = clusterer.get_persona_characteristics(cluster_id, {})
+        personas.append({
+            "id": cluster_id,
+            "name": name,
+            "description": characteristics["description"],
+            "traits": characteristics["traits"],
+            "gaming_style": characteristics.get("gaming_style", ""),
+        })
+
+    return {"personas": personas}
 
 
 @router.get("/monitoring/distribution")

@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
-from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from typing import List, Union
 
 
 class Settings(BaseSettings):
@@ -15,11 +16,20 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = "steamdna_password"
     DB_DATABASE: str = "steamdna"
 
-    # CORS
-    ALLOWED_ORIGINS: List[str] = [
+    # CORS - Use Union to accept both string and list
+    ALLOWED_ORIGINS: Union[str, List[str]] = [
         "http://localhost:3000",
         "http://localhost:4000",
     ]
+
+    @field_validator('ALLOWED_ORIGINS', mode='before')
+    @classmethod
+    def parse_allowed_origins(cls, v):
+        """Parse ALLOWED_ORIGINS from comma-separated string or list"""
+        if isinstance(v, str):
+            # Handle comma-separated string from environment variables
+            return [origin.strip() for origin in v.split(',')]
+        return v
 
     # ML Settings - Feature Extraction
     MIN_GAMES_FOR_ANALYSIS: int = 5
@@ -41,9 +51,11 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     LOG_FORMAT: str = "json"  # json or text
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "env_parse_none_str": "null",
+    }
 
     @property
     def database_url(self) -> str:

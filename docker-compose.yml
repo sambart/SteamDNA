@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -44,14 +42,14 @@ services:
       - '4000:4000'
     environment:
       NODE_ENV: development
-      PORT: 4000
+      PORT: '4000'
       DB_HOST: postgres
-      DB_PORT: 5432
+      DB_PORT: '5432'
       DB_USERNAME: steamdna
-      DB_PASSWORD: steamdna_password
+      DB_PASSWORD: 'steamdna_password'
       DB_DATABASE: steamdna
       REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_PORT: '6379'
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,7 +100,7 @@ services:
       DB_USERNAME: steamdna
       DB_PASSWORD: steamdna_password
       DB_DATABASE: steamdna
-      ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:4000"]'
+      ALLOWED_ORIGINS: 'http://localhost:3000,http://localhost:4000'
     depends_on:
       postgres:
         condition: service_healthy

@@ -8,7 +8,11 @@
       "Bash(docker-compose restart:*)",
       "Bash(timeout 5 docker-compose logs:*)",
       "Bash(exit 0)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(timeout 15 docker-compose logs:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(timeout 10 docker-compose logs:*)"
     ]
   }
 }

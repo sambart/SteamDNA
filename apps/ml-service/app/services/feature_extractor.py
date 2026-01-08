@@ -177,8 +177,9 @@ class FeatureExtractor:
                             release_dt = pd.to_datetime(release_date)
                             if release_dt >= one_year_ago:
                                 new_release_count += 1
-                        except:
-                            pass
+                        except (ValueError, TypeError, pd.errors.ParserError) as e:
+                            # Skip invalid date strings
+                            continue
                     elif isinstance(release_date, (datetime, pd.Timestamp)):
                         if pd.Timestamp(release_date) >= one_year_ago:
                             new_release_count += 1
