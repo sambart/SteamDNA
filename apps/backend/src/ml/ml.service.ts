@@ -61,7 +61,7 @@ export class MLService {
     try {
       const data = await this.httpService.post<MLAnalysisResponse>(
         `${this.mlServiceUrl}/api/ml/analysis/analyze`,
-        { userId, userGames, gamesInfo },
+        { request: { userId, userGames, gamesInfo } },
         { timeout: 30000, retries: 2 },
       );
 

@@ -56,13 +56,13 @@ export default function AnalysisPage() {
 
       if (!summaryRes.ok) {
         const errorData = await summaryRes.json();
-        throw new Error(errorData.message || 'Failed to fetch analysis');
+        throw new Error(errorData.message || '분석을 가져오는데 실패했습니다');
       }
 
       const summaryData = await summaryRes.json();
       setSummary(summaryData);
     } catch (err: any) {
-      setError(err.message || 'Failed to load analysis. Please check if the Steam ID is valid and the profile is public.');
+      setError(err.message || '분석을 불러오는데 실패했습니다. Steam ID가 유효한지, 프로필이 공개되어 있는지 확인해주세요.');
     } finally {
       setLoading(false);
     }
@@ -74,21 +74,21 @@ export default function AnalysisPage() {
       const dashboardRes = await fetch(`${apiUrl}/analysis/dashboard/${steamId}`);
 
       if (!dashboardRes.ok) {
-        throw new Error('Failed to fetch dashboard');
+        throw new Error('대시보드를 가져오는데 실패했습니다');
       }
 
       const dashboardData = await dashboardRes.json();
       setDashboard(dashboardData);
       setShowDashboard(true);
     } catch (err: any) {
-      setError(err.message || 'Failed to load dashboard');
+      setError(err.message || '대시보드를 불러오는데 실패했습니다');
     }
   };
 
   if (loading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gradient-to-b from-steam-darkgray to-steam-blue">
-        <div className="text-white text-2xl">Loading your gaming DNA...</div>
+        <div className="text-white text-2xl">게이밍 DNA를 분석하고 있습니다...</div>
       </main>
     );
   }
@@ -97,13 +97,13 @@ export default function AnalysisPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gradient-to-b from-steam-darkgray to-steam-blue">
         <div className="max-w-2xl text-center">
-          <h1 className="text-4xl font-bold mb-4 text-white">Error</h1>
+          <h1 className="text-4xl font-bold mb-4 text-white">오류</h1>
           <p className="text-red-400 mb-8">{error}</p>
           <button
             onClick={() => router.push('/')}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg"
           >
-            Try Another ID
+            다른 ID로 시도하기
           </button>
         </div>
       </main>
@@ -123,9 +123,9 @@ export default function AnalysisPage() {
             onClick={() => router.push('/')}
             className="mb-4 text-blue-400 hover:text-blue-300 underline"
           >
-            ← Back to Home
+            ← 홈으로 돌아가기
           </button>
-          <h1 className="text-5xl font-bold text-white mb-4">Your Gaming DNA</h1>
+          <h1 className="text-5xl font-bold text-white mb-4">당신의 게이밍 DNA</h1>
         </div>
 
         {/* Profile Summary */}
@@ -143,31 +143,31 @@ export default function AnalysisPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-steam-blue p-4 rounded-lg text-center">
               <div className="text-3xl font-bold text-white">{summary.totalGames}</div>
-              <div className="text-sm text-steam-gray">Total Games</div>
+              <div className="text-sm text-steam-gray">보유 게임 수</div>
             </div>
             <div className="bg-steam-blue p-4 rounded-lg text-center">
               <div className="text-3xl font-bold text-white">{summary.totalPlaytime.toLocaleString()}</div>
-              <div className="text-sm text-steam-gray">Hours Played</div>
+              <div className="text-sm text-steam-gray">플레이 시간 (시간)</div>
             </div>
             <div className="bg-steam-blue p-4 rounded-lg text-center">
               <div className="text-3xl font-bold text-white">{summary.avgPlaytimePerGame}</div>
-              <div className="text-sm text-steam-gray">Avg Hours/Game</div>
+              <div className="text-sm text-steam-gray">게임당 평균 시간</div>
             </div>
             <div className="bg-steam-blue p-4 rounded-lg text-center">
               <div className="text-3xl font-bold text-white">{summary.recentActivity}</div>
-              <div className="text-sm text-steam-gray">Recent Games</div>
+              <div className="text-sm text-steam-gray">최근 플레이 게임</div>
             </div>
           </div>
         </div>
 
         {/* Top Games */}
         <div className="bg-steam-lightblue rounded-lg p-8 mb-8">
-          <h3 className="text-2xl font-bold text-white mb-4">Top 5 Most Played Games</h3>
+          <h3 className="text-2xl font-bold text-white mb-4">가장 많이 플레이한 게임 Top 5</h3>
           <div className="space-y-3">
             {summary.topGames.map((game, index) => (
               <div key={index} className="bg-steam-blue p-4 rounded-lg flex justify-between items-center">
                 <span className="text-white font-semibold">{game.name}</span>
-                <span className="text-blue-400">{Math.round(game.playtime / 60)} hours</span>
+                <span className="text-blue-400">{Math.round(game.playtime / 60)} 시간</span>
               </div>
             ))}
           </div>
@@ -180,14 +180,14 @@ export default function AnalysisPage() {
               onClick={fetchDashboard}
               className="bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900 text-white font-bold py-4 px-8 rounded-lg text-lg transition-all duration-200 shadow-lg hover:shadow-xl"
             >
-              View Detailed Dashboard
+              상세 대시보드 보기
             </button>
           </div>
         ) : dashboard && (
           <>
             {/* Playtime Distribution Chart */}
             <div className="bg-steam-lightblue rounded-lg p-8 mb-8">
-              <h3 className="text-2xl font-bold text-white mb-4">Playtime Distribution</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">플레이타임 분포</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
@@ -211,7 +211,7 @@ export default function AnalysisPage() {
 
             {/* Top 10 Games Chart */}
             <div className="bg-steam-lightblue rounded-lg p-8 mb-8">
-              <h3 className="text-2xl font-bold text-white mb-4">Top 10 Games by Playtime</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">플레이타임 기준 Top 10 게임</h3>
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={dashboard.charts.topGames} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
@@ -219,26 +219,26 @@ export default function AnalysisPage() {
                   <YAxis dataKey="name" type="category" width={150} stroke="#c7d5e0" />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="playtime" fill="#0088FE" name="Hours Played" />
+                  <Bar dataKey="playtime" fill="#0088FE" name="플레이 시간 (시간)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
             {/* Additional Stats */}
             <div className="bg-steam-lightblue rounded-lg p-8">
-              <h3 className="text-2xl font-bold text-white mb-4">Statistics</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">통계</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-steam-blue p-6 rounded-lg">
                   <div className="text-4xl font-bold text-white mb-2">{dashboard.stats.totalGames}</div>
-                  <div className="text-steam-gray">Total Games Owned</div>
+                  <div className="text-steam-gray">보유 게임 총 개수</div>
                 </div>
                 <div className="bg-steam-blue p-6 rounded-lg">
                   <div className="text-4xl font-bold text-white mb-2">{dashboard.stats.totalPlaytime.toLocaleString()}</div>
-                  <div className="text-steam-gray">Total Hours Played</div>
+                  <div className="text-steam-gray">총 플레이 시간</div>
                 </div>
                 <div className="bg-steam-blue p-6 rounded-lg">
                   <div className="text-4xl font-bold text-white mb-2">{dashboard.stats.gamesNeverPlayed}</div>
-                  <div className="text-steam-gray">Games Never Played</div>
+                  <div className="text-steam-gray">한번도 플레이하지 않은 게임</div>
                 </div>
               </div>
             </div>

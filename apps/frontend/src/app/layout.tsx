@@ -5,8 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'SteamDNA - Discover Your Gaming DNA',
-  description: 'Analyze your Steam gaming profile and discover your gaming personality',
+  title: 'SteamDNA - 당신의 게이밍 DNA를 발견하세요',
+  description: 'Steam 게이밍 프로필을 분석하고 당신의 게이밍 성향을 발견하세요',
 }
 
 export default function RootLayout({
@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body className={inter.className}>{children}</body>
     </html>
   )

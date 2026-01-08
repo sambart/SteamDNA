@@ -1,6 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { Injectable, Logger } from '@nestjs/common';
 import { MLService } from '../ml/ml.service';
 import { GameDataService } from './services/game-data.service';
 import { UserDataService } from './services/user-data.service';
@@ -17,20 +15,14 @@ export class AnalysisService {
     private userDataService: UserDataService,
     private statisticsService: StatisticsService,
     private personaService: PersonaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   async generateSummary(steamData: any) {
     const { player, games, recentGames } = steamData;
     const gameList = games?.games || [];
 
-    // Check cache first
-    const cacheKey = `analysis:${player.steamid}`;
-    const cached = await this.cacheManager.get(cacheKey);
-    if (cached) {
-      this.logger.log(`Returning cached analysis for ${player.steamid}`);
-      return cached;
-    }
+    // No caching for analysis - always generate fresh results
+    // (Game details are still cached separately in steam.service.ts)
 
     // Save or update user data
     await this.userDataService.saveUserData(player);
@@ -114,9 +106,7 @@ export class AnalysisService {
       mlInsights,
     };
 
-    // Cache the result for 1 hour (3600 seconds)
-    await this.cacheManager.set(cacheKey, result, 3600000);
-
+    // No caching - always return fresh analysis results
     return result;
   }
 

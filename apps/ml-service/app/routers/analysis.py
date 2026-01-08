@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, PersonaResult
 from app.services.feature_extractor import FeatureExtractor
 from app.services.clustering import GamingPersonaClusterer
@@ -21,7 +21,7 @@ logger = get_logger()
 
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_user(
-    request_body: AnalysisRequest,
+    request: AnalysisRequest,
     feature_extractor: FeatureExtractor = Depends(get_feature_extractor),
     clusterer: GamingPersonaClusterer = Depends(get_clusterer),
     monitor: ClusterMonitor = Depends(get_cluster_monitor),
@@ -35,21 +35,23 @@ async def analyze_user(
     2. Classifies user into a gaming persona
     3. Returns detailed analysis
     """
+    data = request
+
     logger.info(
         "Analysis request received",
         extra={
-            "user_id": request_body.userId,
-            "game_count": len(request_body.userGames) if request_body.userGames else 0
+            "user_id": data.userId,
+            "game_count": len(data.userGames) if data.userGames else 0
         }
     )
 
     try:
         # Validate input data
-        if not request_body.userGames or len(request_body.userGames) == 0:
-            logger.info("No games provided", extra={"user_id": request_body.userId})
+        if not data.userGames or len(data.userGames) == 0:
+            logger.info("No games provided", extra={"user_id": data.userId})
             # Return default response for users with no games
             return AnalysisResponse(
-                userId=int(request_body.userId),
+                userId=int(data.userId),
                 featureVector=[0.0] * settings.FEATURE_VECTOR_SIZE,
                 persona=PersonaResult(
                     clusterId=0,
@@ -66,20 +68,20 @@ async def analyze_user(
             )
 
         # Check minimum games requirement
-        if len(request_body.userGames) < settings.MIN_GAMES_FOR_ANALYSIS:
+        if len(data.userGames) < settings.MIN_GAMES_FOR_ANALYSIS:
             logger.warning(
                 "Insufficient games for analysis",
                 extra={
-                    "user_id": request_body.userId,
-                    "game_count": len(request_body.userGames),
+                    "user_id": data.userId,
+                    "game_count": len(data.userGames),
                     "min_required": settings.MIN_GAMES_FOR_ANALYSIS
                 }
             )
             raise InsufficientDataError(min_games=settings.MIN_GAMES_FOR_ANALYSIS)
 
         # Convert Pydantic models to dictionaries
-        user_games_data = [game.model_dump() for game in request_body.userGames]
-        games_info_data = [game.model_dump() for game in request_body.gamesInfo]
+        user_games_data = [game.model_dump() for game in data.userGames]
+        games_info_data = [game.model_dump() for game in data.gamesInfo]
 
         # Extract features
         features = feature_extractor.extract_user_features(
@@ -87,31 +89,57 @@ async def analyze_user(
         )
 
         # Predict persona
-        cluster_id, persona_name, confidence = clusterer.predict_persona(
-            features["feature_vector"]
-        )
+        try:
+            cluster_id, persona_name, confidence = clusterer.predict_persona(
+                features["feature_vector"]
+            )
 
-        # Record prediction for monitoring
-        monitor.record_prediction(
-            cluster_id=cluster_id,
-            confidence=confidence,
-            feature_vector=features["feature_vector"]
-        )
+            # Record prediction for monitoring
+            monitor.record_prediction(
+                cluster_id=cluster_id,
+                confidence=confidence,
+                feature_vector=features["feature_vector"]
+            )
 
-        logger.info(
-            "Analysis completed successfully",
-            extra={
-                "user_id": request_body.userId,
-                "cluster_id": cluster_id,
-                "confidence": confidence,
-                "persona_name": persona_name
-            }
-        )
+            logger.info(
+                "Analysis completed successfully (ML model)",
+                extra={
+                    "user_id": data.userId,
+                    "cluster_id": cluster_id,
+                    "confidence": confidence,
+                    "persona_name": persona_name
+                }
+            )
 
-        # Get persona characteristics
-        persona_chars = clusterer.get_persona_characteristics(
-            cluster_id, features["feature_details"]
-        )
+            # Get persona characteristics
+            persona_chars = clusterer.get_persona_characteristics(
+                cluster_id, features["feature_details"]
+            )
+        except ValueError as e:
+            # Model not fitted - use feature-based classification
+            logger.info(
+                "Model not fitted, using feature-based persona prediction",
+                extra={"user_id": data.userId, "error": str(e)}
+            )
+
+            cluster_id, persona_name, confidence = clusterer.predict_persona_by_features(
+                features["feature_details"]
+            )
+
+            logger.info(
+                "Analysis completed successfully (feature-based)",
+                extra={
+                    "user_id": data.userId,
+                    "cluster_id": cluster_id,
+                    "confidence": confidence,
+                    "persona_name": persona_name
+                }
+            )
+
+            # Get persona characteristics
+            persona_chars = clusterer.get_persona_characteristics(
+                cluster_id, features["feature_details"]
+            )
 
         # Build persona result
         persona_result = PersonaResult(
@@ -133,7 +161,7 @@ async def analyze_user(
         cleaned_top_genres = convert_numpy_types(top_genres)
 
         return AnalysisResponse(
-            userId=int(request_body.userId),
+            userId=int(data.userId),
             featureVector=cleaned_feature_vector,
             persona=persona_result,
             topGenres=cleaned_top_genres,
@@ -145,14 +173,14 @@ async def analyze_user(
     except InsufficientDataError as e:
         logger.warning(
             "Insufficient data for analysis",
-            extra={"user_id": request_body.userId, "error": str(e)}
+            extra={"user_id": data.userId, "error": str(e)}
         )
         raise HTTPException(status_code=400, detail=str(e))
 
     except FeatureExtractionError as e:
         logger.error(
             "Feature extraction failed",
-            extra={"user_id": request_body.userId, "error": str(e)},
+            extra={"user_id": data.userId, "error": str(e)},
             exc_info=True
         )
         raise HTTPException(
@@ -163,7 +191,7 @@ async def analyze_user(
     except ValueError as e:
         logger.warning(
             "Data validation error",
-            extra={"user_id": request_body.userId, "error": str(e)},
+            extra={"user_id": data.userId, "error": str(e)},
             exc_info=True
         )
         raise HTTPException(
@@ -174,7 +202,7 @@ async def analyze_user(
     except Exception as e:
         logger.error(
             "Unexpected error during analysis",
-            extra={"user_id": request_body.userId, "error": str(e)},
+            extra={"user_id": data.userId, "error": str(e)},
             exc_info=True
         )
         raise HTTPException(

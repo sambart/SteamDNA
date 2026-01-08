@@ -21,6 +21,81 @@ class GamingPersonaClusterer:
         self.kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         self.is_fitted = False
 
+    def predict_persona_by_features(self, feature_details: Dict[str, Any]) -> Tuple[int, str, float]:
+        """
+        Predict persona based on feature analysis (rule-based fallback)
+        Used when ML model is not fitted yet
+
+        Returns:
+            Tuple of (cluster_id, persona_name, confidence)
+        """
+        genre_features = feature_details.get("genre_features", {})
+        playtime_features = feature_details.get("playtime_features", {})
+        diversity_features = feature_details.get("diversity_features", {})
+
+        # Extract key ratios
+        story_rpg_ratio = genre_features.get("story_rpg_ratio", 0)
+        single_player_ratio = genre_features.get("single_player_ratio", 0)
+        strategy_sim_ratio = genre_features.get("strategy_simulation_ratio", 0)
+        competitive_ratio = genre_features.get("competitive_pvp_ratio", 0)
+        multiplayer_coop_ratio = genre_features.get("multiplayer_coop_ratio", 0)
+        casual_indie_ratio = genre_features.get("casual_indie_ratio", 0)
+
+        # Extract playtime characteristics
+        deep_dive_count = playtime_features.get("deep_dive_game_count", 0)
+        avg_session = playtime_features.get("avg_session_length", 0)
+        top_game_concentt = playtime_features.get("top_game_concentration", 0)
+        genre_diversity = genre_features.get("genre_diversity", 0)
+
+        # Score each persona (0-5: 몰입형/사색형, 1: 분석형/계획형, 2: 자유형/탐색형, 3: 성취지향/경쟁형, 4: 소셜형/협동형)
+        scores = [0.0, 0.0, 0.0, 0.0, 0.0]
+
+        # 0: 몰입형/사색형 - Story/RPG + Long sessions + Single player
+        scores[0] += story_rpg_ratio * 3.0
+        scores[0] += single_player_ratio * 2.0
+        scores[0] += min(deep_dive_count / 10.0, 1.0) * 2.0  # Normalize deep dive count
+        scores[0] += min(avg_session / 10.0, 1.0) * 1.5  # Long sessions
+
+        # 1: 분석형/계획형 - Strategy/Simulation + High concentration + Long play
+        scores[1] += strategy_sim_ratio * 3.5
+        scores[1] += top_game_concentration * 2.0
+        scores[1] += min(avg_session / 10.0, 1.0) * 1.5
+
+        # 2: 자유형/탐색형 - High diversity + Low concentration + Indie/Casual
+        scores[2] += genre_diversity * 1.5
+        scores[2] += (1 - top_game_concentration) * 2.0  # Low concentration = high exploration
+        scores[2] += casual_indie_ratio * 1.5
+        new_release_rate = diversity_features.get("new_release_purchase_rate", 0)
+        scores[2] += new_release_rate * 2.0
+
+        # 3: 성취지향/경쟁형 - Competitive + Repetitive play + High concentration
+        scores[3] += competitive_ratio * 3.5
+        scores[3] += top_game_concentration * 2.0
+        repeat_intensity = playtime_features.get("repeat_play_intensity", 0)
+        scores[3] += repeat_intensity * 2.0
+
+        # 4: 소셜형/협동형 - Multiplayer/Coop dominant
+        scores[4] += multiplayer_coop_ratio * 4.0
+        scores[4] += (1 - single_player_ratio) * 1.5
+
+        # Find highest scoring persona
+        max_score = max(scores)
+
+        # If all scores are very low, default to 탐색형 (most flexible)
+        if max_score < 0.5:
+            return (2, self.PERSONA_NAMES[2], 0.5)
+
+        cluster_id = scores.index(max_score)
+
+        # Calculate confidence based on score separation
+        sorted_scores = sorted(scores, reverse=True)
+        if sorted_scores[0] > 0:
+            confidence = min((sorted_scores[0] - sorted_scores[1]) / sorted_scores[0] + 0.5, 1.0)
+        else:
+            confidence = 0.5
+
+        return (cluster_id, self.PERSONA_NAMES[cluster_id], float(confidence))
+
     def fit(self, feature_vectors: List[List[float]]):
         """Fit the clustering model on user feature vectors"""
         if len(feature_vectors) < self.n_clusters:
@@ -41,10 +116,13 @@ class GamingPersonaClusterer:
 
         Returns:
             Tuple of (cluster_id, persona_name, confidence)
+
+        Raises:
+            ValueError: If model is not fitted
         """
         if not self.is_fitted:
-            # Return default persona if model not fitted
-            return (0, "Casual Gamer", 0.5)
+            # Raise error to trigger fallback in backend
+            raise ValueError("클러스터링 모델이 아직 학습되지 않았습니다. 충분한 데이터가 수집되면 자동으로 학습됩니다.")
 
         X = np.array([feature_vector])
         X_scaled = self.scaler.transform(X)
