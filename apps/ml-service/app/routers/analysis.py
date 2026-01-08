@@ -1,15 +1,22 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse, PersonaResult
 from app.services.feature_extractor import FeatureExtractor
 from app.services.clustering import GamingPersonaClusterer
-from app.services.cluster_monitor import cluster_monitor
+from app.services.cluster_monitor import ClusterMonitor
+from app.api.dependencies import (
+    get_settings,
+    get_feature_extractor,
+    get_clusterer,
+    get_cluster_monitor,
+    reset_cluster_monitor,
+)
+from app.core.logging_config import get_logger
+from app.core.exceptions import InsufficientDataError, FeatureExtractionError
+from app.config import Settings
 import numpy as np
 
 router = APIRouter()
-
-# Initialize ML services
-feature_extractor = FeatureExtractor()
-clusterer = GamingPersonaClusterer(n_clusters=5)
+logger = get_logger()
 
 
 def convert_numpy_types(obj):
@@ -42,7 +49,13 @@ def convert_numpy_types(obj):
 
 
 @router.post("/analyze", response_model=AnalysisResponse)
-async def analyze_user(request: AnalysisRequest):
+async def analyze_user(
+    request: AnalysisRequest,
+    feature_extractor: FeatureExtractor = Depends(get_feature_extractor),
+    clusterer: GamingPersonaClusterer = Depends(get_clusterer),
+    monitor: ClusterMonitor = Depends(get_cluster_monitor),
+    settings: Settings = Depends(get_settings),
+):
     """
     Analyze user gaming profile and return ML-based insights
 
@@ -51,13 +64,22 @@ async def analyze_user(request: AnalysisRequest):
     2. Classifies user into a gaming persona
     3. Returns detailed analysis
     """
+    logger.info(
+        "Analysis request received",
+        extra={
+            "user_id": request.userId,
+            "game_count": len(request.userGames) if request.userGames else 0
+        }
+    )
+
     try:
         # Validate input data
         if not request.userGames or len(request.userGames) == 0:
+            logger.info("No games provided", extra={"user_id": request.userId})
             # Return default response for users with no games
             return AnalysisResponse(
                 userId=int(request.userId),
-                featureVector=[0.0] * 27,
+                featureVector=[0.0] * settings.FEATURE_VECTOR_SIZE,
                 persona=PersonaResult(
                     clusterId=0,
                     personaName="신규 게이머",
@@ -71,6 +93,18 @@ async def analyze_user(request: AnalysisRequest):
                 totalPlaytime=0.0,
                 featureDetails={},
             )
+
+        # Check minimum games requirement
+        if len(request.userGames) < settings.MIN_GAMES_FOR_ANALYSIS:
+            logger.warning(
+                "Insufficient games for analysis",
+                extra={
+                    "user_id": request.userId,
+                    "game_count": len(request.userGames),
+                    "min_required": settings.MIN_GAMES_FOR_ANALYSIS
+                }
+            )
+            raise InsufficientDataError(min_games=settings.MIN_GAMES_FOR_ANALYSIS)
 
         # Convert Pydantic models to dictionaries
         user_games_data = [game.model_dump() for game in request.userGames]
@@ -87,10 +121,20 @@ async def analyze_user(request: AnalysisRequest):
         )
 
         # Record prediction for monitoring
-        cluster_monitor.record_prediction(
+        monitor.record_prediction(
             cluster_id=cluster_id,
             confidence=confidence,
             feature_vector=features["feature_vector"]
+        )
+
+        logger.info(
+            "Analysis completed successfully",
+            extra={
+                "user_id": request.userId,
+                "cluster_id": cluster_id,
+                "confidence": confidence,
+                "persona_name": persona_name
+            }
         )
 
         # Get persona characteristics
@@ -127,59 +171,51 @@ async def analyze_user(request: AnalysisRequest):
             featureDetails=cleaned_feature_details,
         )
 
-    except ValueError as e:
-        # Handle data validation errors - return default analysis instead of 500
-        import traceback
-        error_detail = f"Data validation error: {str(e)}"
-        print(f"WARNING in /analyze endpoint: {error_detail}")
-        print(f"Traceback: {traceback.format_exc()}")
-
-        # Return a fallback response instead of raising 500
-        return AnalysisResponse(
-            userId=int(request.userId),
-            featureVector=[0.0] * 27,
-            persona=PersonaResult(
-                clusterId=0,
-                personaName="캐주얼 게이머",
-                confidence=0.5,
-                description="상세 분석을 수행할 수 없습니다",
-                traits=["캐주얼"],
-                insights=["사용 가능한 데이터로 분석을 완료할 수 없습니다"],
-            ),
-            topGenres=[],
-            totalGames=len(request.userGames) if request.userGames else 0,
-            totalPlaytime=0.0,
-            featureDetails={},
+    except InsufficientDataError as e:
+        logger.warning(
+            "Insufficient data for analysis",
+            extra={"user_id": request.userId, "error": str(e)}
         )
-    except Exception as e:
-        # Handle unexpected errors - log and return fallback
-        import traceback
-        error_detail = f"Unexpected error: {str(e)}"
-        print(f"ERROR in /analyze endpoint: {error_detail}")
-        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=str(e))
 
-        # Return a fallback response instead of raising 500
-        return AnalysisResponse(
-            userId=int(request.userId),
-            featureVector=[0.0] * 27,
-            persona=PersonaResult(
-                clusterId=0,
-                personaName="캐주얼 게이머",
-                confidence=0.5,
-                description="분석을 일시적으로 사용할 수 없습니다",
-                traits=["캐주얼"],
-                insights=["나중에 다시 시도해주세요"],
-            ),
-            topGenres=[],
-            totalGames=len(request.userGames) if request.userGames else 0,
-            totalPlaytime=0.0,
-            featureDetails={},
+    except FeatureExtractionError as e:
+        logger.error(
+            "Feature extraction failed",
+            extra={"user_id": request.userId, "error": str(e)},
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"피처 추출 실패: {str(e)}"
+        )
+
+    except ValueError as e:
+        logger.warning(
+            "Data validation error",
+            extra={"user_id": request.userId, "error": str(e)},
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"데이터 유효성 검증 실패: {str(e)}"
+        )
+
+    except Exception as e:
+        logger.error(
+            "Unexpected error during analysis",
+            extra={"user_id": request.userId, "error": str(e)},
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="분석 중 예상치 못한 오류가 발생했습니다. 나중에 다시 시도해주세요."
         )
 
 
 @router.get("/personas")
-async def get_personas():
+async def get_personas(clusterer: GamingPersonaClusterer = Depends(get_clusterer)):
     """Get list of available gaming personas"""
+    logger.info("Fetching available personas")
     return {
         "personas": [
             {
@@ -197,50 +233,58 @@ async def get_personas():
 
 
 @router.get("/monitoring/distribution")
-async def get_cluster_distribution():
+async def get_cluster_distribution(monitor: ClusterMonitor = Depends(get_cluster_monitor)):
     """
     Get current cluster distribution statistics
 
     Returns information about how users are distributed across personas
     """
-    return cluster_monitor.get_distribution()
+    logger.debug("Fetching cluster distribution")
+    return monitor.get_distribution()
 
 
 @router.get("/monitoring/quality")
-async def get_clustering_quality():
+async def get_clustering_quality(monitor: ClusterMonitor = Depends(get_cluster_monitor)):
     """
     Get clustering quality metrics
 
     Returns metrics like average confidence, balance score, etc.
     """
-    return cluster_monitor.get_persona_quality_metrics()
+    logger.debug("Fetching clustering quality metrics")
+    return monitor.get_persona_quality_metrics()
 
 
 @router.get("/monitoring/features")
-async def get_feature_statistics():
+async def get_feature_statistics(monitor: ClusterMonitor = Depends(get_cluster_monitor)):
     """
     Get feature value statistics
 
     Returns min/max/avg for all 27 features
     """
-    return cluster_monitor.get_feature_statistics()
+    logger.debug("Fetching feature statistics")
+    return monitor.get_feature_statistics()
 
 
 @router.get("/monitoring/summary")
-async def get_monitoring_summary():
+async def get_monitoring_summary(
+    monitor: ClusterMonitor = Depends(get_cluster_monitor),
+    clusterer: GamingPersonaClusterer = Depends(get_clusterer),
+    settings: Settings = Depends(get_settings),
+):
     """
     Get comprehensive monitoring summary
 
     Returns distribution, quality metrics, and key feature stats
     """
-    distribution = cluster_monitor.get_distribution()
-    quality = cluster_monitor.get_persona_quality_metrics()
+    logger.info("Fetching monitoring summary")
+    distribution = monitor.get_distribution()
+    quality = monitor.get_persona_quality_metrics()
 
     return {
         "distribution": distribution,
         "quality_metrics": quality,
         "persona_names": clusterer.PERSONA_NAMES,
-        "total_features": 27,
+        "total_features": settings.FEATURE_VECTOR_SIZE,
     }
 
 
@@ -251,7 +295,8 @@ async def reset_monitoring():
 
     Clears all accumulated monitoring data
     """
-    cluster_monitor.reset()
+    logger.warning("Resetting monitoring statistics")
+    reset_cluster_monitor()
     return {
         "status": "success",
         "message": "Monitoring statistics have been reset"
