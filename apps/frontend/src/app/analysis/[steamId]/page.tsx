@@ -330,8 +330,8 @@ export default function AnalysisPage() {
                       { subject: '전략/시뮬', value: (summary.mlInsights.featureDetails.genre_features.strategy_simulation_ratio || 0) * 100 },
                       { subject: '경쟁/PvP', value: (summary.mlInsights.featureDetails.genre_features.competitive_pvp_ratio || 0) * 100 },
                       { subject: '멀티/협동', value: (summary.mlInsights.featureDetails.genre_features.multiplayer_coop_ratio || 0) * 100 },
-                      { subject: '캐주얼/인디', value: (summary.mlInsights.featureDetails.temporal_features.casual_indie_ratio || 0) * 100 },
-                      { subject: '싱글플레이', value: (summary.mlInsights.featureDetails.temporal_features.single_player_ratio || 0) * 100 },
+                      { subject: '캐주얼/인디', value: (summary.mlInsights.featureDetails.genre_features.casual_indie_ratio || 0) * 100 },
+                      { subject: '싱글플레이', value: (summary.mlInsights.featureDetails.genre_features.single_player_ratio || 0) * 100 },
                     ]}>
                       <PolarGrid stroke="#4a5568" />
                       <PolarAngleAxis dataKey="subject" tick={{ fill: '#c7d5e0', fontSize: 12 }} />
